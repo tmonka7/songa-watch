@@ -9,5 +9,9 @@ idf_component_register(
         "esp_lcd"
         "esp_io_expander")
 
-include(package_manager)
-cu_pkg_define_version(${CMAKE_CURRENT_LIST_DIR})
+# Version pinned here rather than read from idf_component.yml: that manifest is
+# not vendored (the component manager is disabled project-wide). Upstream is
+# 1.0.1~1; the "~1" is a registry revision that never reached the C code anyway.
+target_compile_options(${COMPONENT_LIB} PUBLIC
+    -DESP_LCD_PANEL_IO_ADDITIONS_VER_MAJOR=1 -DESP_LCD_PANEL_IO_ADDITIONS_VER_MINOR=0
+    -DESP_LCD_PANEL_IO_ADDITIONS_VER_PATCH=1)

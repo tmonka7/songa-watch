@@ -24,6 +24,12 @@ idf.py build
 idf.py -p <PORT> flash monitor
 ```
 
+If `idf.py build` fails with `ninja: error: failed recompaction: Permission
+denied` before compiling anything, that is the host, not the project -
+something is holding `build/build.ninja` open (an on-access virus scanner is
+the usual culprit, an editor indexing `build/` the next most likely). Delete
+`build/` and rebuild; if it recurs, exclude the build directory from scanning.
+
 `idf.py menuconfig` → **Songa Watch hardware** and **Songa Watch services**
 hold the project's own options (camera pins, idle timings, OTA server,
 firmware version).
@@ -45,6 +51,15 @@ non-ESP platform ports were removed — none are referenced by
 `env_support/cmake/esp.cmake`. The registry's `espressif/usb` component was
 **not** vendored: it requires IDF ≥ 5.5.3 and would shadow the copy built
 into IDF 5.3, which is what actually satisfies the BSP's reference to it.
+
+No `idf_component.yml` survives anywhere in the tree. Two components
+(`esp_lcd_sh8601`, `esp_lcd_panel_io_additions`) read their own manifest at
+configure time for a version banner; those versions are pinned in their
+`CMakeLists.txt` instead. `esp_lcd_touch_ft5x06` gained its `esp_lcd_touch`
+dependency the same way. Leaving the manifests in place would have been
+harmless today but is a standing trap: the moment anything re-enables the
+component manager, their dependency lists would send the build to the
+registry.
 
 ---
 
@@ -257,8 +272,12 @@ Written against the vendor BSP, the datasheets and the register maps from
 Waveshare's own example code; the LVGL 9.5 API surface was checked against
 the vendored source symbol by symbol.
 
-**It has not been compiled or run on hardware** — no ESP-IDF toolchain was
-available on the machine where it was written. Expect to work through the
-first build. The parts most worth testing first are the ones that could not
-be verified statically: the Arducam SPI timing, the ELM327 exchange against
-a real adapter, and the light-sleep wake path.
+**CMake configure completes on ESP-IDF v5.3.5** for `esp32s3`: all components
+resolve, the offline build produces no registry traffic, and `sdkconfig` is
+generated without deprecation warnings.
+
+**It has not been compiled or run on hardware.** Configure is a long way
+short of a link, so expect to work through compiler errors on the first real
+build. The parts most worth testing first are the ones no static check can
+reach: the Arducam SPI timing, the ELM327 exchange against a real adapter,
+and the light-sleep wake path.

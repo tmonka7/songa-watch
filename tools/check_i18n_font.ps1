@@ -16,8 +16,18 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Root = (Split-Path -Parent $PSScriptRoot)
+    [string]$Root
 )
+
+# $PSScriptRoot is empty when the script is launched by a relative path under
+# Windows PowerShell 5.1, so fall back to the invocation path before giving up.
+if ([string]::IsNullOrEmpty($Root)) {
+    $here = $PSScriptRoot
+    if ([string]::IsNullOrEmpty($here)) {
+        $here = Split-Path -Parent ([System.IO.Path]::GetFullPath($MyInvocation.MyCommand.Path))
+    }
+    $Root = Split-Path -Parent $here
+}
 
 $ErrorActionPreference = 'Stop'
 

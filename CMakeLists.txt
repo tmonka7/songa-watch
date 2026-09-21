@@ -11,6 +11,12 @@ cmake_minimum_required(VERSION 3.16)
 # manifests and contact the registry when one appears.
 set(ENV{IDF_COMPONENT_MANAGER} "0")
 
+# esp_lvgl_port reads $ENV{LVGL_VERSION} to decide which port to compile, but IDF
+# configures esp_lvgl_port before lvgl, so lvgl's own version.cmake has not run
+# yet and the port silently falls back to "9.0.0". Both resolve to the same
+# lvgl9 port, but source the real version here so the build reports the truth.
+include("${CMAKE_CURRENT_LIST_DIR}/components/lvgl/env_support/cmake/version.cmake")
+
 set(COMPONENTS_DIR "${CMAKE_CURRENT_LIST_DIR}/components")
 set(EXTRA_COMPONENT_DIRS "${COMPONENTS_DIR}")
 
