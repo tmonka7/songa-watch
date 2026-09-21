@@ -1,4 +1,4 @@
-/*
+﻿/*
  * 04 - Applications.
  *
  * A 3-column grid of coloured app tiles, paged the way the design shows.
@@ -14,7 +14,10 @@
 
 typedef struct {
     const char    *icon;
-    lv_color_t     color;
+    /* Held as a plain hex value, not an lv_color_t: lv_color_hex() is a static
+     * inline, so it is not a constant expression and cannot initialise a
+     * static table. Converted at use in app_tile(). */
+    uint32_t       color;
     i18n_id_t      label;
     ui_screen_id_t target;
 } app_entry_t;
@@ -39,7 +42,7 @@ static lv_obj_t *app_tile(lv_obj_t *parent, const app_entry_t *entry)
     ui_style_plain(chip);
     lv_obj_set_size(chip, 64, 64);
     lv_obj_set_style_radius(chip, 20, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(chip, entry->color, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(chip, lv_color_hex(entry->color), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_align(chip, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_remove_flag(chip, LV_OBJ_FLAG_CLICKABLE);
@@ -68,18 +71,18 @@ lv_obj_t *scr_apps_create(void)
     lv_obj_t *scr = ui_screen_base(STR_APPS, &body);
 
     static const app_entry_t k_apps[] = {
-        { LV_SYMBOL_EYE_OPEN, lv_color_hex(0x3B82F6), STR_AI_VISION,  UI_SCR_VISION      },
-        { LV_SYMBOL_GPS,      lv_color_hex(0x22C55E), STR_SENSOR,     UI_SCR_SENSOR      },
-        { LV_SYMBOL_IMAGE,    lv_color_hex(0xA855F7), STR_CAMERA,     UI_SCR_CAMERA      },
-        { LV_SYMBOL_AUDIO,    lv_color_hex(0xF59E0B), STR_AUDIO,      UI_SCR_AUDIO       },
-        { LV_SYMBOL_WIFI,     lv_color_hex(0x22D3EE), STR_WIFI,       UI_SCR_WIFI        },
-        { LV_SYMBOL_BLUETOOTH,lv_color_hex(0x2563EB), STR_BLUETOOTH,  UI_SCR_BLUETOOTH   },
-        { LV_SYMBOL_SD_CARD,  lv_color_hex(0x0EA5E9), STR_SD_CARD,    UI_SCR_SDCARD      },
-        { LV_SYMBOL_SETTINGS, lv_color_hex(0x64748B), STR_SETTINGS,   UI_SCR_SETTINGS    },
-        { LV_SYMBOL_CHARGE,   lv_color_hex(0x16A34A), STR_BATTERY,    UI_SCR_BATTERY     },
-        { LV_SYMBOL_DRIVE,    lv_color_hex(0xEF4444), STR_OBD2,       UI_SCR_OBD2_HOME   },
-        { LV_SYMBOL_CHARGE,   lv_color_hex(0xEC4899), STR_MOTION_GRAPH, UI_SCR_MOTION_GRAPH },
-        { LV_SYMBOL_DOWNLOAD, lv_color_hex(0x8B5CF6), STR_OTA_UPDATE, UI_SCR_OTA         },
+        { LV_SYMBOL_EYE_OPEN, 0x3B82F6, STR_AI_VISION,  UI_SCR_VISION      },
+        { LV_SYMBOL_GPS,      0x22C55E, STR_SENSOR,     UI_SCR_SENSOR      },
+        { LV_SYMBOL_IMAGE,    0xA855F7, STR_CAMERA,     UI_SCR_CAMERA      },
+        { LV_SYMBOL_AUDIO,    0xF59E0B, STR_AUDIO,      UI_SCR_AUDIO       },
+        { LV_SYMBOL_WIFI,     0x22D3EE, STR_WIFI,       UI_SCR_WIFI        },
+        { LV_SYMBOL_BLUETOOTH,0x2563EB, STR_BLUETOOTH,  UI_SCR_BLUETOOTH   },
+        { LV_SYMBOL_SD_CARD,  0x0EA5E9, STR_SD_CARD,    UI_SCR_SDCARD      },
+        { LV_SYMBOL_SETTINGS, 0x64748B, STR_SETTINGS,   UI_SCR_SETTINGS    },
+        { LV_SYMBOL_CHARGE,   0x16A34A, STR_BATTERY,    UI_SCR_BATTERY     },
+        { LV_SYMBOL_DRIVE,    0xEF4444, STR_OBD2,       UI_SCR_OBD2_HOME   },
+        { LV_SYMBOL_CHARGE,   0xEC4899, STR_MOTION_GRAPH, UI_SCR_MOTION_GRAPH },
+        { LV_SYMBOL_DOWNLOAD, 0x8B5CF6, STR_OTA_UPDATE, UI_SCR_OTA         },
     };
 
     lv_obj_t *grid = lv_obj_create(body);
