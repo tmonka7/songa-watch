@@ -123,7 +123,7 @@ The idle policy in `svc_power.c` is where the runtime is won:
 | --- | --- | --- |
 | Active | touch | full brightness, IMU at 125 Hz |
 | Dimmed | `idle_dim_sec` (10 s) | brightness Ã· 4 |
-| Asleep | `idle_off_sec` (30 s) | panel register `0x51 = 0`, LVGL task stopped, IMU to accel-only at 3 Hz with its **hardware pedometer still counting**, SoC in automatic light sleep |
+| Asleep | `idle_off_sec` (30 s) | panel register `0x51 = 0`, LVGL task stopped, IMU to accel-only (3 Hz, or 21 Hz when raise-to-wake is on) with its **hardware pedometer still counting**, SoC in automatic light sleep |
 
 Supporting choices:
 
@@ -143,6 +143,14 @@ Supporting choices:
 - **Bounded reconnects.** Four attempts, then stop â€” a station stuck in a
   connect loop is one of the fastest ways to flatten a cell.
 - **The camera and detector stop the instant their screen closes.**
+- **Raise to wake costs one 6-byte I2C read per sleep tick.** The QMI8658 has
+  a wake-on-motion block that would do this for free, but it signals on
+  INT1/INT2 and this board brings neither pin out to a GPIO, so the gesture is
+  sampled on the tick that already runs for the touch panel. The accelerometer
+  moves to 21 Hz instead of 3 Hz while it is enabled - still an accel-only
+  low-power mode, tens of microamps - because a raise takes well under a
+  second and 3 Hz would see two samples of it. Turn it off in Settings ->
+  Display and the IMU drops back to 3 Hz.
 
 `CONFIG_ESP_SLEEP_POWER_DOWN_FLASH` is deliberately *off*: it depends on
 `!SPIRAM`, and this board has 8 MB of octal PSRAM.
@@ -239,6 +247,64 @@ available and says so.
 
 ---
 
+## Clock
+
+The watch is built to run with no network, so **the clock is set by hand** and
+`ntp_enable` defaults to off. Settings -> Time offers year, month, day, hour
+and minute on one card, applied together by one Save. The day is clamped to
+the length of the chosen month rather than allowed to roll over, so picking
+the 31st of a 30-day month gives the 30th, not the 1st of the next.
+
+This matters more than it would on a connected watch: the PCF85063 raises its
+oscillator-stopped flag after a full power cut, and when that flag is set
+nothing but the user knows what day it is. SNTP is still there for the times a
+Wi-Fi network is around - the toggle sits on the same screen.
+
+## Waking the watch
+
+| Wake source | How it works |
+| --- | --- |
+| Touch | The touch INT line is a light-sleep wake source; the power task polls it at 100 ms because `lvgl_port_stop()` leaves LVGL unable to read the panel |
+| PWR button | An AXP2101 interrupt - the button is wired to the PMU, not the SoC |
+| Wrist raise | The power task samples the accelerometer on the same 100 ms tick |
+
+Raise-to-wake is a sequence, not a threshold, because a threshold alone fires
+in a pocket and on every roll in bed:
+
+1. the display must first be facing **away** from the wearer,
+2. then come round to facing them within `WATCH_RAISE_WINDOW_MS` (1.5 s),
+3. and hold there, near 1 g, for `WATCH_RAISE_HOLD_MS` (200 ms).
+
+Step 3 is what separates checking the time from swinging an arm while walking:
+an arm in motion never settles at 1 g. All four thresholds, plus a
+`WATCH_RAISE_INVERT` for a board that mounts the IMU face-down, are in
+menuconfig under **Songa Watch hardware**. The toggle the user sees is in
+Settings -> Display.
+
+## Phone link
+
+**There is no phone audio, and there cannot be.** A2DP (media), HFP (calls)
+and PBAP (contacts) are Bluetooth *Classic* profiles, and the ESP32-S3 radio
+has no BR/EDR at all - only BLE. This is not a missing driver; the hardware
+cannot carry those profiles. LE Audio would be the BLE answer and the S3 does
+not implement it either. The ES8311 speaker and ES7210 microphones are
+perfectly capable of a call; there is simply no transport to a phone.
+
+What a BLE-only watch **can** get from a phone, with no companion app:
+
+| | iOS | Android |
+| --- | --- | --- |
+| Incoming-call alert with caller ID | ANCS | needs a companion app |
+| Notifications | ANCS | needs a companion app |
+| Media control + track title | AMS | needs a companion app |
+| Call audio | no | no |
+
+None of this is implemented yet. The groundwork is: NimBLE is built with the
+peripheral role enabled and `BT_NIMBLE_NVS_PERSIST=y` for bond storage, and
+`BT_NIMBLE_MAX_CONNECTIONS=2`, so a phone and an OBD2 dongle can be connected
+at once. Nothing advertises today, though, so the watch is invisible to a
+phone. Adding ANCS would mean advertising as a peripheral, SMP bonding, and an
+ANCS client alongside the existing central.
 ## Languages
 
 English and Japanese, switchable without a reboot â€” `WATCH_EV_LANG_CHANGED`
@@ -266,10 +332,14 @@ text. See `docs/i18n.md` for the substitutions the subset forced.
 | `tools/check_i18n_font.ps1` | Every non-ASCII character used is in the font |
 | `tools/check_consistency.ps1` | Screens declared = defined, i18n ids valid and present in both tables, `CONFIG_` symbols defined, braces balanced |
 | `tools/check_requires.ps1` | Every `#include` is covered by a declared `REQUIRES`/`PRIV_REQUIRES` |
+| `tools/iram_report.ps1` | What is occupying IRAM, by object file, read from the linker map |
 
-All three run without ESP-IDF installed. `check_requires.ps1` is the one worth
-running before every build: with the component manager off, nothing derives
-dependencies from a manifest, so a missing `REQUIRES` entry configures cleanly
+The first three run without ESP-IDF installed; `iram_report.ps1` needs a build
+directory. It reads `build/songa_watch.map`, which GNU ld writes even when the
+link fails - which is exactly when IRAM is the thing you need to measure.
+
+`check_requires.ps1` is the one worth running before every build: with the
+component manager off, nothing derives dependencies from a manifest, so a missing `REQUIRES` entry configures cleanly
 and then fails deep into compilation with `No such file or directory`, one
 header at a time. Set `IDF_PATH` and it checks ESP-IDF's own components too;
 without it, headers that IDF provides are skipped rather than guessed at.

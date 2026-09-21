@@ -194,9 +194,17 @@ esp_err_t svc_sensors_set_low_power(bool low_power)
     s_low_power = low_power;
 
     if (low_power) {
-        /* Gyro off, accelerometer at 3 Hz. The pedometer runs off the
-         * accelerometer, so steps keep counting while the watch sleeps. */
-        return qmi8658_enter_low_power(QMI8658_ODR_LOWPOWER_3HZ);
+        /* Gyro off, accelerometer only. The pedometer runs off the
+         * accelerometer, so steps keep counting while the watch sleeps.
+         *
+         * 3 Hz is the cheapest setting, but a raise gesture takes well
+         * under a second: at 3 Hz the watch would see two or three samples
+         * of it and light the screen after the wrist had already stopped.
+         * 21 Hz is still an accel-only low-power mode costing tens of
+         * microamps, and it is what makes the gesture detectable at all. */
+        const bool raise = svc_settings_get()->wake_on_raise;
+        return qmi8658_enter_low_power(raise ? QMI8658_ODR_LOWPOWER_21HZ
+                                             : QMI8658_ODR_LOWPOWER_3HZ);
     }
     return qmi8658_exit_low_power();
 }

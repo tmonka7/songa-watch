@@ -15,6 +15,7 @@
 #include "watch_svc/svc_time.h"
 #include "watch_svc/svc_wifi.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -78,18 +79,31 @@ static void on_always_on(lv_event_t *e)
     svc_settings_set_always_on(lv_obj_has_state(sw, LV_STATE_CHECKED));
 }
 
+static void on_raise_to_wake(lv_event_t *e)
+{
+    lv_obj_t *sw = lv_event_get_target_obj(e);
+    svc_settings_set_wake_on_raise(lv_obj_has_state(sw, LV_STATE_CHECKED));
+}
+
 static void on_timeout(lv_event_t *e)
 {
     lv_obj_t *dd = lv_event_get_target_obj(e);
     /* Must match the option list built below. */
-    static const uint16_t k_seconds[] = { 10, 15, 30, 60, 120, 300 };
+    static const uint16_t k_seconds[] = { 10, 15, 30, 60, 120, 300, 0 };
     const uint32_t sel = lv_dropdown_get_selected(dd);
-    if (sel < sizeof(k_seconds) / sizeof(k_seconds[0])) {
-        svc_settings_set_idle_off_sec(k_seconds[sel]);
-        /* Keep dimming comfortably ahead of the blank. */
-        const uint16_t dim = (uint16_t)(k_seconds[sel] / 3);
-        svc_settings_set_idle_dim_sec((dim < 3) ? 3 : dim);
+    if (sel >= sizeof(k_seconds) / sizeof(k_seconds[0])) {
+        return;
     }
+    svc_settings_set_idle_off_sec(k_seconds[sel]);
+    if (k_seconds[sel] == 0) {
+        /* "Never" means never: dimming too, or the screen would still fade
+         * while the user believes they turned the timeout off. */
+        svc_settings_set_idle_dim_sec(0);
+        return;
+    }
+    /* Keep dimming comfortably ahead of the blank. */
+    const uint16_t dim = (uint16_t)(k_seconds[sel] / 3);
+    svc_settings_set_idle_dim_sec((dim < 3) ? 3 : dim);
 }
 
 static void on_watchface(lv_event_t *e)
@@ -162,8 +176,8 @@ lv_obj_t *scr_display_create(void)
     lv_obj_set_style_bg_color(slider, UI_COLOR_TEXT, LV_PART_KNOB);
     lv_obj_add_event_cb(slider, on_brightness, LV_EVENT_VALUE_CHANGED, NULL);
 
-    /* ---- timeout ---- */
-    uint32_t sel = 2;
+    /* ---- sleep timeout ---- */
+    uint32_t sel;
     switch (cfg->idle_off_sec) {
     case 10:  sel = 0; break;
     case 15:  sel = 1; break;
@@ -171,13 +185,20 @@ lv_obj_t *scr_display_create(void)
     case 60:  sel = 3; break;
     case 120: sel = 4; break;
     case 300: sel = 5; break;
+    case 0:   sel = 6; break;   /* never */
     default:  sel = 2; break;
     }
-    dropdown_row(body, i18n(STR_AUTO_TIMEOUT),
-                 "10 sec\n15 sec\n30 sec\n1 min\n2 min\n5 min", sel, on_timeout);
+    char timeout_opts[96];
+    snprintf(timeout_opts, sizeof(timeout_opts),
+             "10 sec\n15 sec\n30 sec\n1 min\n2 min\n5 min\n%s", i18n(STR_NEVER));
+    dropdown_row(body, i18n(STR_AUTO_TIMEOUT), timeout_opts, sel, on_timeout);
 
     /* ---- always on ---- */
     ui_toggle_row(body, i18n(STR_ALWAYS_ON), cfg->always_on, on_always_on, NULL);
+
+    /* ---- raise to wake ---- */
+    ui_toggle_row(body, i18n(STR_RAISE_TO_WAKE), cfg->wake_on_raise,
+                  on_raise_to_wake, NULL);
 
     /* ---- watch face ---- */
     dropdown_row(body, i18n(STR_WATCH_FACE), "Digital\nMinimal\nBold",
@@ -195,9 +216,32 @@ lv_obj_t *scr_display_create(void)
 
 /* ============================================================== 26 time == */
 
+/* The roller offers a fixed span of years; 2024 is before this firmware
+ * existed and 2075 is well past any battery in it. */
+#define TIME_YEAR_BASE  2024
+#define TIME_YEAR_COUNT 52
+
+static lv_obj_t *s_roll_year;
+static lv_obj_t *s_roll_mon;
+static lv_obj_t *s_roll_day;
 static lv_obj_t *s_roll_hour;
 static lv_obj_t *s_roll_min;
 static lv_obj_t *s_now_label;
+
+/* Days in a month, so picking the 31st of a 30-day month cannot silently
+ * roll the date into the next one the way mktime() would. */
+static int days_in_month(int year, int month_0based)
+{
+    static const int k_days[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+    if (month_0based < 0 || month_0based > 11) {
+        return 31;
+    }
+    if (month_0based == 1) {
+        const bool leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        return leap ? 29 : 28;
+    }
+    return k_days[month_0based];
+}
 
 static void on_24h(lv_event_t *e)
 {
@@ -232,11 +276,29 @@ static void on_apply_time(lv_event_t *e)
     (void)e;
     struct tm now;
     svc_time_now(&now);
+
+    const int year  = TIME_YEAR_BASE + (int)lv_roller_get_selected(s_roll_year);
+    const int month = (int)lv_roller_get_selected(s_roll_mon);
+    int       day   = (int)lv_roller_get_selected(s_roll_day) + 1;
+
+    /* Clamp rather than let the date roll over: someone who picks 31 for a
+     * 30-day month meant the end of that month, not the 1st of the next. */
+    const int last = days_in_month(year, month);
+    if (day > last) {
+        day = last;
+    }
+
+    now.tm_year = year - 1900;
+    now.tm_mon  = month;
+    now.tm_mday = day;
     now.tm_hour = (int)lv_roller_get_selected(s_roll_hour);
     now.tm_min  = (int)lv_roller_get_selected(s_roll_min);
     now.tm_sec  = 0;
+    now.tm_isdst = -1;   /* let the timezone rules decide */
 
     if (svc_time_set_local(&now) == ESP_OK) {
+        /* Reflect the clamp, so the user sees what was actually stored. */
+        lv_roller_set_selected(s_roll_day, (uint32_t)(day - 1), LV_ANIM_OFF);
         ui_toast(i18n(STR_SAVE), UI_COLOR_GREEN);
     } else {
         ui_toast(i18n(STR_ERROR), UI_COLOR_RED);
@@ -268,6 +330,17 @@ static lv_obj_t *make_roller(lv_obj_t *parent, const char *options, uint32_t sel
     return r;
 }
 
+/* A small label centred over a roller, so three bare number columns are
+ * legible as year / month / day. */
+static void roller_caption(lv_obj_t *parent, const char *text, int32_t x_ofs)
+{
+    lv_obj_t *l = lv_label_create(parent);
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_color(l, UI_COLOR_TEXT_FAINT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(l, ui_font_text(UI_FONT_TINY), LV_PART_MAIN);
+    lv_obj_align(l, LV_ALIGN_TOP_MID, x_ofs, 12);
+}
+
 lv_obj_t *scr_time_create(void)
 {
     lv_obj_t *body;
@@ -283,7 +356,13 @@ lv_obj_t *scr_time_create(void)
     lv_obj_center(s_now_label);
 
     /* ---- manual set ---- */
-    lv_obj_t *card = ui_card(body, 150);
+    /*
+     * Date as well as time, because this watch is built to work with no
+     * network: the PCF85063 comes up with its oscillator-stopped flag set
+     * after a full power cut, and then nothing but the user knows what day
+     * it is. One Save applies all five rollers.
+     */
+    lv_obj_t *card = ui_card(body, 244);
 
     lv_obj_t *cap = lv_label_create(card);
     lv_label_set_text(cap, i18n(STR_SET_MANUALLY));
@@ -292,10 +371,26 @@ lv_obj_t *scr_time_create(void)
     lv_obj_align(cap, LV_ALIGN_TOP_LEFT, 0, 0);
 
     /* Built once as static strings; lv_roller keeps its own copy anyway. */
+    static char years[TIME_YEAR_COUNT * 5 + 1];
+    static char months[12 * 3 + 1];
+    static char days[31 * 3 + 1];
     static char hours[24 * 3 + 1];
     static char mins[60 * 3 + 1];
     if (hours[0] == '\0') {
-        char *p = hours;
+        char *p = years;
+        for (int y = 0; y < TIME_YEAR_COUNT; y++) {
+            p += sprintf(p, "%d%s", TIME_YEAR_BASE + y,
+                         (y < TIME_YEAR_COUNT - 1) ? "\n" : "");
+        }
+        p = months;
+        for (int m = 1; m <= 12; m++) {
+            p += sprintf(p, "%02d%s", m, (m < 12) ? "\n" : "");
+        }
+        p = days;
+        for (int d = 1; d <= 31; d++) {
+            p += sprintf(p, "%02d%s", d, (d < 31) ? "\n" : "");
+        }
+        p = hours;
         for (int h = 0; h < 24; h++) {
             p += sprintf(p, "%02d%s", h, (h < 23) ? "\n" : "");
         }
@@ -308,22 +403,40 @@ lv_obj_t *scr_time_create(void)
     struct tm now;
     svc_time_now(&now);
 
+    /* ---- date row ---- */
+    int year_sel = (now.tm_year + 1900) - TIME_YEAR_BASE;
+    if (year_sel < 0 || year_sel >= TIME_YEAR_COUNT) {
+        year_sel = 0;
+    }
+    s_roll_year = make_roller(card, years, (uint32_t)year_sel);
+    lv_obj_align(s_roll_year, LV_ALIGN_TOP_MID, -104, 26);
+    roller_caption(card, i18n(STR_YEAR), -104);
+
+    s_roll_mon = make_roller(card, months, (uint32_t)now.tm_mon);
+    lv_obj_align(s_roll_mon, LV_ALIGN_TOP_MID, -18, 26);
+    roller_caption(card, i18n(STR_MONTH), -18);
+
+    s_roll_day = make_roller(card, days, (uint32_t)(now.tm_mday - 1));
+    lv_obj_align(s_roll_day, LV_ALIGN_TOP_MID, 52, 26);
+    roller_caption(card, i18n(STR_DAY), 52);
+
+    /* ---- time row ---- */
     s_roll_hour = make_roller(card, hours, (uint32_t)now.tm_hour);
-    lv_obj_align(s_roll_hour, LV_ALIGN_CENTER, -60, 8);
+    lv_obj_align(s_roll_hour, LV_ALIGN_TOP_MID, -60, 126);
 
     lv_obj_t *colon = lv_label_create(card);
     lv_label_set_text(colon, ":");
     lv_obj_set_style_text_color(colon, UI_COLOR_TEXT, LV_PART_MAIN);
     lv_obj_set_style_text_font(colon, ui_font(UI_FONT_TITLE), LV_PART_MAIN);
-    lv_obj_align(colon, LV_ALIGN_CENTER, -8, 8);
+    lv_obj_align(colon, LV_ALIGN_TOP_MID, -8, 150);
 
     s_roll_min = make_roller(card, mins, (uint32_t)now.tm_min);
-    lv_obj_align(s_roll_min, LV_ALIGN_CENTER, 44, 8);
+    lv_obj_align(s_roll_min, LV_ALIGN_TOP_MID, 44, 126);
 
     lv_obj_t *apply = ui_button(card, i18n(STR_SAVE), UI_COLOR_ACCENT,
                                 on_apply_time, NULL);
     lv_obj_set_size(apply, 90, 36);
-    lv_obj_align(apply, LV_ALIGN_RIGHT_MID, 0, 8);
+    lv_obj_align(apply, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
 
     /* ---- options ---- */
     ui_toggle_row(body, i18n(STR_24_HOUR), cfg->time_24h, on_24h, NULL);

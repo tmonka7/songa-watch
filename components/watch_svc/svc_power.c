@@ -3,7 +3,9 @@
 #include "watch_svc/svc_settings.h"
 #include "watch_svc/svc_sensors.h"
 #include "watch_hal/watch_board.h"
+#include "watch_hal/qmi8658.h"
 
+#include <math.h>
 #include <string.h>
 #include "sdkconfig.h"
 #include "esp_check.h"
@@ -84,6 +86,96 @@ esp_err_t svc_power_set_brightness(uint8_t percent)
     return err;
 }
 
+
+/* ------------------------------------------------------- raise to wake */
+
+/*
+ * Lifting the wrist lights the screen.
+ *
+ * The QMI8658's own wake-on-motion block would be the cheap way to do this,
+ * but it signals on INT1/INT2 and this board brings neither pin out to a
+ * GPIO (BSP_CAPS_IMU is 0, and the BSP defines no IMU interrupt). So the
+ * gesture is sampled here instead, on the sleep tick that already runs for
+ * the touch panel - the accelerometer read is 6 bytes of I2C on a loop that
+ * was going to wake anyway, which is why this costs so little.
+ *
+ * Axis convention: az is gravity's component along the display normal,
+ * +1 g with the face toward the sky and -1 g with it toward the ground.
+ * If your board mounts the IMU the other way up, set WATCH_RAISE_INVERT.
+ *
+ * The gesture is deliberately a sequence, not a threshold, because a
+ * threshold alone fires in a pocket and on every roll in bed:
+ *
+ *   1. the face must first be away from the wearer  (az <= LOW)
+ *   2. then come up to facing them  (az >= HIGH) within WINDOW_MS
+ *   3. and hold there, nearly still, for HOLD_MS
+ *
+ * Step 3 is what separates looking at the watch from swinging an arm while
+ * walking: an arm in motion never settles at 1 g.
+ */
+
+#define RAISE_LOW_TILT   (CONFIG_WATCH_RAISE_LOW_TILT_MG / 1000.0f)
+#define RAISE_HIGH_TILT  (CONFIG_WATCH_RAISE_HIGH_TILT_MG / 1000.0f)
+#define RAISE_STILL_BAND 0.25f   /* g away from 1 g still counts as settled */
+
+static bool    s_raise_armed;
+static int64_t s_raise_armed_us;
+static int64_t s_raise_held_since_us;
+
+static void raise_reset(void)
+{
+    s_raise_armed = false;
+    s_raise_held_since_us = 0;
+}
+
+static bool raise_detect(int64_t now_us)
+{
+    float ax, ay, az;
+    if (qmi8658_read_accel(&ax, &ay, &az) != ESP_OK) {
+        return false;
+    }
+#if CONFIG_WATCH_RAISE_INVERT
+    az = -az;
+#endif
+
+    if (az <= RAISE_LOW_TILT) {
+        s_raise_armed = true;
+        s_raise_armed_us = now_us;
+        s_raise_held_since_us = 0;
+        return false;
+    }
+
+    if (!s_raise_armed) {
+        return false;
+    }
+    if ((now_us - s_raise_armed_us) > (CONFIG_WATCH_RAISE_WINDOW_MS * 1000LL)) {
+        /* Too slow to be a raise - the watch was just carried around. */
+        raise_reset();
+        return false;
+    }
+    if (az < RAISE_HIGH_TILT) {
+        s_raise_held_since_us = 0;
+        return false;
+    }
+
+    /* Facing the wearer. Require it to be near-stationary, so a swinging
+     * arm that happens to pass through the right angle does not count. */
+    const float mag = sqrtf(ax * ax + ay * ay + az * az);
+    if (mag < (1.0f - RAISE_STILL_BAND) || mag > (1.0f + RAISE_STILL_BAND)) {
+        s_raise_held_since_us = 0;
+        return false;
+    }
+
+    if (s_raise_held_since_us == 0) {
+        s_raise_held_since_us = now_us;
+        return false;
+    }
+    if ((now_us - s_raise_held_since_us) >= (CONFIG_WATCH_RAISE_HOLD_MS * 1000LL)) {
+        raise_reset();
+        return true;
+    }
+    return false;
+}
 /* --------------------------------------------------------- sleep / wake */
 
 static void enter_state(watch_power_state_t next)
@@ -101,6 +193,7 @@ static void enter_state(watch_power_state_t next)
              * buffer from before the sleep. */
             lvgl_port_resume();
             svc_sensors_set_low_power(false);
+            raise_reset();
         }
         apply_brightness(cfg->brightness);
         svc_event_post(WATCH_EV_DISPLAY_WAKE, NULL, 0);
@@ -124,6 +217,9 @@ static void enter_state(watch_power_state_t next)
             lvgl_port_stop();
         }
         svc_sensors_set_low_power(true);
+        /* Start the gesture from a clean slate: whatever the wrist was doing
+         * on the way into sleep is not the raise we are looking for. */
+        raise_reset();
         svc_event_post(WATCH_EV_DISPLAY_SLEEP, NULL, 0);
         break;
     }
@@ -286,12 +382,17 @@ static void power_task(void *arg)
             }
         }
 
-        /* --- wake on touch ----------------------------------------------- */
+        /* --- wake on touch, or on a raised wrist ------------------------- */
         if (s_state == WATCH_POWER_ASLEEP) {
             /* The touch controller holds INT low while a finger is down
              * (the BSP configures the line active-low). */
             if (gpio_get_level(BSP_LCD_TOUCH_INT) == 0) {
                 ESP_LOGD(TAG, "touch while asleep - waking");
+                svc_power_notify_activity();
+            } else if (svc_settings_get()->wake_on_raise &&
+                       svc_settings_get()->imu_enable &&
+                       qmi8658_is_present() && raise_detect(now)) {
+                ESP_LOGD(TAG, "wrist raised - waking");
                 svc_power_notify_activity();
             }
         }

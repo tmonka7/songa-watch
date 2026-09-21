@@ -78,6 +78,50 @@ menu "Songa Watch hardware"
             default 30
             range 5 600
 
+
+        comment "Raise to wake"
+
+        config WATCH_RAISE_INVERT
+            bool "The IMU is mounted face-down on this board"
+            default n
+            help
+                Raise-to-wake reads gravity's component along the display
+                normal and expects +1 g when the face points at the sky.
+                If lifting the wrist does nothing but lowering it wakes the
+                screen, the IMU is mounted the other way up - turn this on.
+
+        config WATCH_RAISE_LOW_TILT_MG
+            int "Face-away threshold that arms the gesture (milli-g)"
+            default 300
+            range 0 900
+            help
+                The gesture only arms once the display has been pointing
+                away from the wearer. Raise this if the watch fails to arm
+                with the arm hanging down; lower it if it arms too easily.
+
+        config WATCH_RAISE_HIGH_TILT_MG
+            int "Face-toward threshold that completes the gesture (milli-g)"
+            default 700
+            range 100 1000
+            help
+                How squarely the display must end up facing the wearer.
+                Must be comfortably above the face-away threshold.
+
+        config WATCH_RAISE_WINDOW_MS
+            int "Milliseconds allowed between arming and completing"
+            default 1500
+            range 200 5000
+            help
+                A raise is a quick movement. A longer span than this is the
+                watch being carried around, not someone checking the time.
+
+        config WATCH_RAISE_HOLD_MS
+            int "Milliseconds the wrist must hold still before waking"
+            default 200
+            range 0 2000
+            help
+                What separates looking at the watch from swinging an arm
+                while walking: an arm in motion never settles at 1 g.
         config WATCH_LOW_BATTERY_PCT
             int "Low battery warning threshold (%)"
             default 15

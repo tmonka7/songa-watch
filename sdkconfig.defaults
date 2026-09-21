@@ -40,7 +40,6 @@ CONFIG_COMPILER_OPTIMIZATION_PERF=y
 # svc_power drives the locks; see components/watch_svc/svc_power.c.
 CONFIG_PM_ENABLE=y
 CONFIG_PM_DFS_INIT_AUTO=y
-CONFIG_PM_SLP_IRAM_OPT=y
 CONFIG_PM_RTOS_IDLE_OPT=y
 CONFIG_PM_SLP_DEFAULT_PARAMS_OPT=y
 CONFIG_ESP_SLEEP_GPIO_RESET_WORKAROUND=y
@@ -50,21 +49,31 @@ CONFIG_ESP_SLEEP_FLASH_LEAKAGE_WORKAROUND=y
 # low-power retention state across light sleep instead.
 
 # --- IRAM budget ---------------------------------------------------------
-# The three PM_*_OPT options above are kept even though each one costs IRAM:
-# they shorten sleep entry and exit, which on a watch that sleeps every 30
-# seconds is paid back thousands of times a day. Everything else that wanted
-# IRAM was given up for them (see the Wi-Fi and LVGL sections).
-#
-# This matters because IRAM is not merely scarce, it is hard-limited by the
-# ISA: the exception vectors reach their handlers with a `j` instruction that
-# encodes +/-128 KB, so an oversized .iram0.text fails at link with
+# IRAM here is not merely scarce, it is hard-limited by the ISA: the exception
+# vectors reach their handlers with a `j` instruction that encodes +/-128 KB,
+# so an oversized .iram0.text fails at link with
 #     dangerous relocation: j: cannot encode: xt_debugexception
 # which names a file in xtensa/ and gives no hint that the cause is your
-# configuration. If it reappears, give ground in this order:
-#   1. CONFIG_PM_SLP_IRAM_OPT=n      (slower sleep transitions)
-#   2. CONFIG_COMPILER_OPTIMIZATION_SIZE=y instead of _PERF (smaller, slower)
-#   3. CONFIG_SPI_FLASH_ROM_IMPL=y   (flash driver from ROM)
-# `idf.py size` reports the headroom.
+# configuration.
+#
+# Everything below moves code out of IRAM and is safe for this firmware. The
+# _INTO_FLASH options only forbid calling those functions while the flash
+# cache is disabled, which nothing here does - no ISR in this project
+# allocates, and the sleep path is IDF's own.
+CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH=y
+CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
+CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y
+#
+# PM_SLP_IRAM_OPT was on, to shorten sleep entry and exit on a watch that
+# sleeps every 30 seconds. It went out to make the link fit. The cost is a
+# slightly longer wake transition, not more sleep current; re-enable it first
+# if `idf.py size` later shows IRAM headroom.
+CONFIG_PM_SLP_IRAM_OPT=n
+#
+# If it still does not fit, in this order:
+#   1. CONFIG_COMPILER_OPTIMIZATION_SIZE=y instead of _PERF (smaller, slower)
+#   2. CONFIG_SPI_FLASH_ROM_IMPL=y   (flash driver from ROM)
+#   3. CONFIG_PM_RTOS_IDLE_OPT=n, CONFIG_PM_SLP_DEFAULT_PARAMS_OPT=n
 
 # ---------------------------------------------------------------- wifi
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8

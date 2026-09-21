@@ -18,7 +18,7 @@ static const char *TAG = "svc_settings";
 
 /* Bumped whenever the struct layout changes; a mismatch falls back to
  * defaults rather than reinterpreting old bytes. */
-#define SETTINGS_VERSION 1
+#define SETTINGS_VERSION 2
 
 static watch_settings_t s_cfg;
 static nvs_handle_t     s_nvs;
@@ -32,7 +32,10 @@ static void load_defaults(void)
         .idle_off_sec = CONFIG_WATCH_IDLE_SLEEP_SEC,
         .always_on    = false,
         .time_24h     = true,
-        .ntp_enable   = true,
+        /* Off by default. This watch is built to run without a network, so
+         * the clock is set by hand on the Time screen; turning SNTP on is an
+         * opt-in for the times a Wi-Fi network is actually around. */
+        .ntp_enable   = false,
         .lang         = WATCH_LANG_EN,
         .watchface    = 0,
         .wifi_enable  = false,
@@ -40,6 +43,7 @@ static void load_defaults(void)
         .volume       = 60,
         .mic_gain     = 50,
         .imu_enable   = true,
+        .wake_on_raise = true,
         .step_goal    = 10000,
     };
     strncpy(s_cfg.tz, "UTC0", sizeof(s_cfg.tz) - 1);
@@ -164,6 +168,8 @@ SETTER(svc_settings_set_mic_gain(uint8_t percent),
        WATCH_SET_MIC_GAIN, s_cfg.mic_gain = percent)
 SETTER(svc_settings_set_imu_enable(bool on),
        WATCH_SET_IMU_ENABLE, s_cfg.imu_enable = on)
+SETTER(svc_settings_set_wake_on_raise(bool on),
+       WATCH_SET_WAKE_ON_RAISE, s_cfg.wake_on_raise = on)
 SETTER(svc_settings_set_step_goal(uint32_t steps),
        WATCH_SET_STEP_GOAL, s_cfg.step_goal = steps)
 

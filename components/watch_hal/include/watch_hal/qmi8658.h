@@ -1,9 +1,14 @@
 /*
  * QMI8658 6-axis IMU (3-axis accel + 3-axis gyro).
  *
- * The chip has a hardware pedometer and a wake-on-motion block. The watch
- * leans on both: the SoC can sleep while the IMU keeps counting steps, and
- * a wrist raise wakes the display without the CPU polling anything.
+ * The chip has a hardware pedometer, which the watch leans on: the SoC can
+ * sleep while the IMU keeps counting steps, and reads the total on wake
+ * instead of running the CPU at 125 Hz.
+ *
+ * The chip also has a wake-on-motion block that asserts INT1/INT2, but this
+ * board brings neither pin out to a GPIO, so nothing can be woken by it.
+ * Raise-to-wake is therefore done by sampling this driver from the power
+ * task while the watch sleeps - see svc_power.c.
  */
 #pragma once
 
@@ -73,6 +78,14 @@ esp_err_t qmi8658_init(i2c_master_bus_handle_t bus, const qmi8658_config_t *cfg)
 
 /** @brief Read accel, gyro and die temperature as engineering units. */
 esp_err_t qmi8658_read(qmi8658_data_t *out);
+
+/**
+ * @brief Read just the three accelerometer axes, in g.
+ *
+ * A 6-byte transfer rather than the 14 qmi8658_read() needs. Meant for the
+ * sleep path, which samples often and cares only about the gravity vector.
+ */
+esp_err_t qmi8658_read_accel(float *ax_g, float *ay_g, float *az_g);
 
 /** @brief Turn the accelerometer and/or gyroscope on or off. */
 esp_err_t qmi8658_set_enabled(bool accel, bool gyro);

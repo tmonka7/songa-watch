@@ -163,6 +163,27 @@ bool qmi8658_is_present(void)
     return s_present;
 }
 
+
+esp_err_t qmi8658_read_accel(float *ax_g, float *ay_g, float *az_g)
+{
+    if (ax_g == NULL || ay_g == NULL || az_g == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_present) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* Six bytes instead of the fourteen qmi8658_read() takes. This one runs
+     * on the sleep tick, where every I2C byte is current the watch spends
+     * while the user is not looking at it. */
+    uint8_t raw[6];
+    ESP_RETURN_ON_ERROR(rd(REG_AX_L, raw, sizeof(raw)), TAG, "accel read");
+
+    *ax_g = (float)(int16_t)((raw[1] << 8) | raw[0]) * s_acc_scale;
+    *ay_g = (float)(int16_t)((raw[3] << 8) | raw[2]) * s_acc_scale;
+    *az_g = (float)(int16_t)((raw[5] << 8) | raw[4]) * s_acc_scale;
+    return ESP_OK;
+}
 esp_err_t qmi8658_set_enabled(bool accel, bool gyro)
 {
     const uint8_t val = (uint8_t)((accel ? CTRL7_ACC_EN : 0) | (gyro ? CTRL7_GYR_EN : 0));

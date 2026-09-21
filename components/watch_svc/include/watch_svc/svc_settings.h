@@ -37,6 +37,7 @@ typedef enum {
     WATCH_SET_VOLUME,
     WATCH_SET_MIC_GAIN,
     WATCH_SET_IMU_ENABLE,
+    WATCH_SET_WAKE_ON_RAISE,
     WATCH_SET_STEP_GOAL,
     WATCH_SET_ALL,          /* emitted after a load or a factory reset */
 } watch_setting_key_t;
@@ -60,6 +61,7 @@ typedef struct {
     uint8_t      volume;          /* 0-100 */
     uint8_t      mic_gain;        /* 0-100 */
     bool         imu_enable;
+    bool         wake_on_raise;  /* lift the wrist to light the screen */
     uint32_t     step_goal;
 } watch_settings_t;
 
@@ -83,6 +85,7 @@ esp_err_t svc_settings_set_ble_enable(bool on);
 esp_err_t svc_settings_set_volume(uint8_t percent);
 esp_err_t svc_settings_set_mic_gain(uint8_t percent);
 esp_err_t svc_settings_set_imu_enable(bool on);
+esp_err_t svc_settings_set_wake_on_raise(bool on);
 esp_err_t svc_settings_set_step_goal(uint32_t steps);
 
 /** @brief Remember the last Wi-Fi network so the watch reconnects on boot. */
