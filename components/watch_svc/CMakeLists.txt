@@ -32,6 +32,7 @@ idf_component_register(
         esp_codec_dev
         esp_https_ota
         app_update
+        esp_app_format
     PRIV_REQUIRES
         driver
         esp_http_client

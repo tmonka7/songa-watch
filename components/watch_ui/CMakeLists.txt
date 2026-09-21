@@ -27,4 +27,9 @@ idf_component_register(
         esp_event
         esp_timer
         app_update
+        # scr_system.c reads the running app descriptor and the flash size
+        # directly. Both reach here transitively through app_update today; naming
+        # them keeps that from being luck.
+        esp_app_format
+        spi_flash
 )
