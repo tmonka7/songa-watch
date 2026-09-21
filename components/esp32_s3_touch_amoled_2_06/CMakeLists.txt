@@ -14,6 +14,6 @@ idf_component_register(
     SRCS "esp32_s3_touch_amoled_2_06.c" ${SRC_VER}
     INCLUDE_DIRS "include" "include/bsp"
     PRIV_INCLUDE_DIRS "priv_include"
-    REQUIRES ${REQ} esp_lcd
+    REQUIRES ${REQ} esp_lcd esp_lcd_panel_io_additions
     PRIV_REQUIRES ${PRIV_REQ} esp_timer spiffs esp_psram fatfs
 )
