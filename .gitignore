@@ -1,0 +1,21 @@
+# ESP-IDF build output
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+
+# The vendored dependencies under components/ are deliberately committed -
+# they are what makes the build work offline. Do not add components/ here.
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+.cache/
+compile_commands.json
+
+# OS
+Thumbs.db
+.DS_Store

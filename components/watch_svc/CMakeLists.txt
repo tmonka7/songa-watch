@@ -1,0 +1,41 @@
+idf_component_register(
+    SRCS
+        "svc_event.c"
+        "svc_settings.c"
+        "svc_i18n.c"
+        "svc_power.c"
+        "svc_sensors.c"
+        "svc_time.c"
+        "svc_wifi.c"
+        "svc_ble.c"
+        "svc_obd2.c"
+        "svc_storage.c"
+        "svc_audio.c"
+        "svc_camera.c"
+        "svc_vision.c"
+        "svc_ota.c"
+    INCLUDE_DIRS "include"
+    REQUIRES
+        watch_hal
+        esp32_s3_touch_amoled_2_06
+        esp_lvgl_port
+        esp_event
+        esp_timer
+        esp_wifi
+        esp_netif
+        esp_pm
+        bt
+        nvs_flash
+        fatfs
+        spiffs
+        vfs
+        esp_codec_dev
+        esp_https_ota
+        app_update
+    PRIV_REQUIRES
+        driver
+        esp_http_client
+        mbedtls
+        esp-tls
+        lwip
+)

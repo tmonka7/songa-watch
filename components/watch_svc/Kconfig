@@ -1,0 +1,30 @@
+menu "Songa Watch services"
+
+    config WATCH_OTA_MANIFEST_URL
+        string "OTA manifest URL"
+        default ""
+        help
+            HTTPS URL of a small JSON manifest describing the newest build:
+
+                {"version":"1.1.0","url":"https://.../songa_watch.bin"}
+
+            Left empty, the OTA screen opens and reports that no update
+            server is configured, which is the right behaviour for a
+            firmware built and flashed locally.
+
+    config WATCH_OTA_SKIP_CERT_CHECK
+        bool "Skip TLS certificate validation for OTA"
+        default n
+        help
+            Only for a lab server with a self-signed certificate. With this
+            on, the watch will install firmware from anyone who can
+            intercept the connection - never ship it enabled.
+
+    config WATCH_FW_VERSION
+        string "Firmware version string"
+        default "1.0.0"
+        help
+            Shown on the About screen and compared against the OTA
+            manifest to decide whether an update is newer.
+
+endmenu

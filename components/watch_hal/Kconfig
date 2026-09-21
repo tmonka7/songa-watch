@@ -1,0 +1,88 @@
+menu "Songa Watch hardware"
+
+    menu "Camera (add-on module)"
+
+        config WATCH_CAMERA_ENABLE
+            bool "Enable the add-on camera"
+            default y
+            help
+                The ESP32-S3-Touch-AMOLED-2.06 has no camera on board and no
+                free DVP bus - a parallel sensor needs 13 pins and this board
+                has 8 left. The supported part is therefore an Arducam Mega
+                (3 MP or 5 MP) on SPI, which needs only 4 wires and does its
+                own JPEG encoding.
+
+                With this off, the Camera / AI Vision / Detection screens
+                still open and say the camera is absent.
+
+        config WATCH_CAMERA_SPI_HOST
+            int "SPI host"
+            default 2
+            range 1 2
+            depends on WATCH_CAMERA_ENABLE
+            help
+                2 = SPI3_HOST. Do not pick 1 (SPI2_HOST): the AMOLED panel
+                owns it.
+
+        config WATCH_CAMERA_PIN_SCK
+            int "SCK GPIO"
+            default 10
+            depends on WATCH_CAMERA_ENABLE
+
+        config WATCH_CAMERA_PIN_MOSI
+            int "MOSI GPIO"
+            default 13
+            depends on WATCH_CAMERA_ENABLE
+
+        config WATCH_CAMERA_PIN_MISO
+            int "MISO GPIO"
+            default 18
+            depends on WATCH_CAMERA_ENABLE
+
+        config WATCH_CAMERA_PIN_CS
+            int "CS GPIO"
+            default 21
+            depends on WATCH_CAMERA_ENABLE
+
+        config WATCH_CAMERA_SPI_FREQ_KHZ
+            int "SPI clock (kHz)"
+            default 8000
+            range 1000 12000
+            depends on WATCH_CAMERA_ENABLE
+            help
+                The Mega is specified to 8 MHz. Flying leads to an add-on
+                module usually will not hold more than that.
+
+    endmenu
+
+    menu "Power management"
+
+        config WATCH_PMU_IRQ_GPIO
+            int "AXP2101 IRQ GPIO (-1 if not wired)"
+            default -1
+            range -1 48
+            help
+                The PWR button is wired to the PMU, not to the SoC. If the
+                AXP2101 IRQ line is broken out to a free pin on your board,
+                set it here and button presses arrive as interrupts. Left at
+                -1, svc_power polls the PMU once a second instead, which
+                costs a little idle current but always works.
+
+        config WATCH_IDLE_DIM_SEC
+            int "Seconds of no touch before dimming"
+            default 10
+            range 3 120
+
+        config WATCH_IDLE_SLEEP_SEC
+            int "Seconds of no touch before the screen turns off"
+            default 30
+            range 5 600
+
+        config WATCH_LOW_BATTERY_PCT
+            int "Low battery warning threshold (%)"
+            default 15
+            range 5 40
+
+    endmenu
+
+endmenu
