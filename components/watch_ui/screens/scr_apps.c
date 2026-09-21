@@ -1,4 +1,4 @@
-﻿/*
+/*
  * 04 - Applications.
  *
  * A 3-column grid of coloured app tiles, paged the way the design shows.

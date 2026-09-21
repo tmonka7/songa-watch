@@ -1,4 +1,4 @@
-﻿# Songa Watch
+# Songa Watch
 
 Smart watch firmware for the **Waveshare ESP32-S3-Touch-AMOLED-2.06** â€” a
 410Ã—502 AMOLED, capacitive touch, 6-axis IMU, PMU, RTC, microphones, speaker
@@ -29,6 +29,10 @@ denied` before compiling anything, that is the host, not the project -
 something is holding `build/build.ninja` open (an on-access virus scanner is
 the usual culprit, an editor indexing `build/` the next most likely). Delete
 `build/` and rebuild; if it recurs, exclude the build directory from scanning.
+
+`sdkconfig.defaults` is only read when `sdkconfig` does not yet exist. After
+changing it, delete `sdkconfig` - or make the same change in `menuconfig` -
+or you will keep building the old configuration.
 
 `idf.py menuconfig` â†’ **Songa Watch hardware** and **Songa Watch services**
 hold the project's own options (camera pins, idle timings, OTA server,

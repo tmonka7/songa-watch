@@ -49,11 +49,35 @@ CONFIG_ESP_SLEEP_FLASH_LEAKAGE_WORKAROUND=y
 # and this board has 8 MB of octal PSRAM. Flash/PSRAM stay in their own
 # low-power retention state across light sleep instead.
 
+# --- IRAM budget ---------------------------------------------------------
+# The three PM_*_OPT options above are kept even though each one costs IRAM:
+# they shorten sleep entry and exit, which on a watch that sleeps every 30
+# seconds is paid back thousands of times a day. Everything else that wanted
+# IRAM was given up for them (see the Wi-Fi and LVGL sections).
+#
+# This matters because IRAM is not merely scarce, it is hard-limited by the
+# ISA: the exception vectors reach their handlers with a `j` instruction that
+# encodes +/-128 KB, so an oversized .iram0.text fails at link with
+#     dangerous relocation: j: cannot encode: xt_debugexception
+# which names a file in xtensa/ and gives no hint that the cause is your
+# configuration. If it reappears, give ground in this order:
+#   1. CONFIG_PM_SLP_IRAM_OPT=n      (slower sleep transitions)
+#   2. CONFIG_COMPILER_OPTIMIZATION_SIZE=y instead of _PERF (smaller, slower)
+#   3. CONFIG_SPI_FLASH_ROM_IMPL=y   (flash driver from ROM)
+# `idf.py size` reports the headroom.
+
 # ---------------------------------------------------------------- wifi
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
 CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
-CONFIG_ESP_WIFI_SLP_IRAM_OPT=y
+# Wi-Fi's three IRAM optimisations are all off. They buy throughput and a
+# little modem-sleep efficiency at a cost of roughly 40 KB of IRAM, and IRAM is
+# the binding constraint here (see the note under "IRAM budget" above). This
+# radio is used for an SNTP sync and the occasional OTA, never for sustained
+# traffic, so the throughput is worth nothing and the space is worth a lot.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
 CONFIG_ESP_WIFI_STA_DISCONNECTED_PM_ENABLE=y
 CONFIG_ESP_PHY_REDUCE_TX_POWER=y
 
@@ -121,7 +145,13 @@ CONFIG_LV_DEF_REFR_PERIOD=16
 CONFIG_LV_OS_FREERTOS=y
 CONFIG_LV_DRAW_SW_DRAW_UNIT_CNT=2
 CONFIG_LV_DRAW_THREAD_STACK_SIZE=8192
-CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
+# LV_ATTRIBUTE_FAST_MEM_USE_IRAM would place LVGL's hot blend and draw routines
+# in IRAM. It is off for space (see "IRAM budget"), and it costs less here than
+# it would elsewhere: at 410x502x16bpp the draw buffers must live in PSRAM, so
+# rendering is bound by the PSRAM bus and then by the QSPI transfer to the
+# panel, not by how fast the blend loop is fetched. Re-enable it first if
+# `idf.py size` later shows IRAM headroom.
+CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=n
 CONFIG_LV_USE_OBSERVER=y
 
 # Fonts: Montserrat for latin + numerals, Source Han Sans for Japanese.

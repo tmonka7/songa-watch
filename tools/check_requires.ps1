@@ -1,4 +1,4 @@
-﻿<#
+<#
     Check that every component declares the components it #includes from.
 
     With the IDF component manager disabled, nothing derives dependencies from
